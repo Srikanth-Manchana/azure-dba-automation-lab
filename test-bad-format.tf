@@ -1,4 +1,4 @@
 variable "test" {
-type=string
-default="bad"
+  type    = string
+  default = "bad"
 }
