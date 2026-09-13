@@ -8,3 +8,5 @@ variable "sqlserver_max_memory_pct" {
     error_message = "max_memory_pct must be between 50 and 90. Values below 50 starve the database; above 90 leave insufficient memory for the OS."
   }
 }
+
+#Reserved for future SQL Server configuration variables, such as min memory, max degree of parallelism, etc.
