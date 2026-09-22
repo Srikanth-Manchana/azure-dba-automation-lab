@@ -24,6 +24,7 @@ provider "azurerm" {
   }
   subscription_id = "fa62ce43-1973-4cfa-8701-52edafaeb3ac"
   tenant_id       = "f6d676f9-f942-4aa8-9e4e-ab463391f2d9"
+  use_oidc        = true
 }
 
 resource "azurerm_resource_group" "state_rg" {
