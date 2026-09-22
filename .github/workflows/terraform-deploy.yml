@@ -57,7 +57,12 @@ jobs:
                   subscription-id: ${{secrets.AZURE_SUBSCRIPTION_ID}}
 
             - name: Terraform Init
-              run: terraform init
+              run: |
+                terraform init \
+                  -backend-config="resource_group_name=rg-adal-tfstate" \
+                  -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
+                  -backend-config="container_name=tfstate" \
+                  -backend-config="key=module-01.terraform.tfstate"
               working-directory: track-a-foundations/01-terraform-fundamentals
 
             - name: Terraform Plan
