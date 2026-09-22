@@ -45,3 +45,4 @@ terraform.rc
 .tfstate/
 .tfstate.backup
 .tfvars
+*tfplan*
