@@ -125,5 +125,99 @@ jobs:
         working-directory: track-a-foundations/01-terraform-fundamentals
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        id: apply
+        run: |
+          terraform apply -auto-approve -no-color 2>&1 | tee apply-output.txt
+          exit ${PIPESTATUS[0]}
         working-directory: track-a-foundations/01-terraform-fundamentals
+        # tee writes output to both the terminal AND apply-output.txt
+        # PIPESTATUS[0] captures terraform's exit code (not tee's)
+        # so the step still fails correctly if apply fails
+
+      - name: Terraform Output
+        id: tf-output
+        if: always()
+        run: |
+          terraform output -no-color 2>&1 | tee output-values.txt
+        working-directory: track-a-foundations/01-terraform-fundamentals
+        # if: always() — runs even if apply failed
+        # so we always see the current state of outputs
+        # useful for diagnosing partial failures
+
+      - name: Post Apply Summary
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Read apply output file
+            let applyOutput = '';
+            try {
+              applyOutput = fs.readFileSync(
+                'track-a-foundations/01-terraform-fundamentals/apply-output.txt',
+                'utf8'
+              );
+            } catch (e) {
+              applyOutput = 'Could not read apply output';
+            }
+
+            // Read terraform outputs file
+            let tfOutputs = '';
+            try {
+              tfOutputs = fs.readFileSync(
+                'track-a-foundations/01-terraform-fundamentals/output-values.txt',
+                'utf8'
+              );
+            } catch (e) {
+              tfOutputs = 'No outputs available';
+            }
+
+            // Extract summary line from apply output
+            const summaryMatch = applyOutput.match(/Apply complete!.*$/m) ||
+                                 applyOutput.match(/No changes\..*$/m) ||
+                                 applyOutput.match(/Error:.*$/m);
+            const summary = summaryMatch ? summaryMatch[0] : 'Apply completed';
+
+            // Build the comment
+            const applyStatus = '${{ steps.apply.outcome }}' === 'success' ? '✅' : '❌';
+            const comment = [
+              `### ${applyStatus} Terraform Apply — \`track-a-foundations/01-terraform-fundamentals\``,
+              '',
+              `**Result:** ${summary}`,
+              `**Triggered by:** @${{ github.actor }}`,
+              `**Commit:** \`${{ github.sha }}\``,
+              `**Branch:** \`${{ github.ref_name }}\``,
+              '',
+              '---',
+              '',
+              '<details>',
+              '<summary>📋 Terraform Outputs (current state)</summary>',
+              '',
+              '```',
+              tfOutputs,
+              '```',
+              '',
+              '</details>',
+              '',
+              '<details>',
+              '<summary>📜 Full Apply Log</summary>',
+              '',
+              '```',
+              applyOutput.substring(0, 50000),
+              '```',
+              '',
+              '</details>'
+            ].join('\n');
+
+            // Post as commit comment (not PR comment — this runs on push to main)
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: comment
+            });
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        # Posts as a commit comment rather than PR comment
+        # because Apply runs on push to main (after PR is merged)
+        # not during the PR itself
