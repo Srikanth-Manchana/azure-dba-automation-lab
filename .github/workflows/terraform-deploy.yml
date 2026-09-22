@@ -63,7 +63,9 @@ jobs:
                   -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
                   -backend-config="container_name=tfstate" \
                   -backend-config="key=module-01.terraform.tfstate" \
-                  -backend-config="use_oidc=true"
+                  -backend-config="use_oidc=true" \
+                  -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+                  -backend-config="client_id=${{ secrets.AZURE_CLIENT_ID }}"
               working-directory: track-a-foundations/01-terraform-fundamentals
 
             - name: Terraform Plan
