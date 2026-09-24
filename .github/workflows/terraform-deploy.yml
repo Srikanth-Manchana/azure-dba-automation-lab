@@ -70,6 +70,25 @@ jobs:
               with:
                   terraform_version: "~> 1.9"
 
+            - name: Verify backend.tf exists
+              run: |
+                MODULE="${{ matrix.module }}"
+                if [ ! -f "$MODULE/backend.tf" ]; then
+                  echo "ERROR: $MODULE/backend.tf is missing"
+                  echo "Every module must have a backend.tf pointing to the remote state backend"
+                  exit 1
+                fi
+                if ! grep -q "stadalstateadcy0lo2" "$MODULE/backend.tf"; then
+                  echo "ERROR: backend.tf does not reference the correct storage account"
+                  exit 1
+                fi
+                if ! grep -q "rg-adal-tfstate" "$MODULE/backend.tf"; then
+                  echo "ERROR: backend.tf does not reference the correct resource group"
+                  exit 1
+                fi
+                echo "backend.tf verified for $MODULE"
+                echo "State key: $(grep key $MODULE/backend.tf | tr -d ' ')"
+
             - name: Terraform Format Check
               run: terraform fmt -check -recursive
               working-directory: ${{ matrix.module }}
