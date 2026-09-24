@@ -141,3 +141,20 @@ output "sql_admin_password" {
   description = "SQL admin password — sensitive, stored in Key Vault"
   sensitive   = true
 }
+# Access policy for GitHub Actions pipeline Service Principal
+# Object ID: 4c40aba3-b6c8-4f42-88b3-3f542e657c94
+# This is the managed identity used by the OIDC federated credential
+resource "azurerm_key_vault_access_policy" "pipeline_sp" {
+  key_vault_id = azurerm_key_vault.sql_secrets.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = "4c40aba3-b6c8-4f42-88b3-3f542e657c94"
+
+  secret_permissions = [
+    "Get",
+    "List",
+    "Set",
+    "Delete",
+    "Purge",
+    "Recover"
+  ]
+}
