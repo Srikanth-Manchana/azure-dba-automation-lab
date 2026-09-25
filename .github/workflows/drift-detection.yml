@@ -88,14 +88,17 @@ jobs:
       - name: Terraform Plan (Drift Check)
         id: plan
         run: |
-          # Run plan and save output AND exit code to files
+          # Disable exit-on-error so bash does not exit when terraform returns 2
+          set +e
           terraform plan -detailed-exitcode -no-color > plan-output.txt 2>&1
-          echo $? > plan-exit-code.txt
-          PLAN_EXIT=$(cat plan-exit-code.txt)
+          PLAN_EXIT=$?
+          set -e
+          # Write exit code to GITHUB_OUTPUT
           echo "plan_exit=$PLAN_EXIT" >> $GITHUB_OUTPUT
           echo "Plan exit code: $PLAN_EXIT"
+          # Show plan in logs
           cat plan-output.txt
-          # Exit codes: 0=no changes, 1=error, 2=drift detected
+          # Always exit 0 — drift decision is made via plan_exit output
           exit 0
         working-directory: ${{ matrix.module }}
 
