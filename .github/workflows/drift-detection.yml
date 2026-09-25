@@ -63,6 +63,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~> 1.9"
+          terraform_wrapper: false   # Must be false for -detailed-exitcode to work
 
       - name: Authenticate to Azure
         uses: azure/login@v2
