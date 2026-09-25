@@ -87,16 +87,19 @@ jobs:
       - name: Terraform Plan (Drift Check)
         id: plan
         run: |
+          set +e
           terraform plan -detailed-exitcode -no-color 2>&1 | tee plan-output.txt
           PLAN_EXIT=${PIPESTATUS[0]}
           echo "plan_exit=$PLAN_EXIT" >> $GITHUB_OUTPUT
-          exit $PLAN_EXIT
+          echo "Plan exit code: $PLAN_EXIT"
+          # Exit codes:
+          # 0 = no changes (no drift)
+          # 1 = error
+          # 2 = changes detected (DRIFT!)
+          # We always exit 0 here so the step succeeds
+          # The actual drift status is read from plan_exit output
+          exit 0
         working-directory: ${{ matrix.module }}
-        continue-on-error: true
-        # Exit codes:
-        # 0 = no changes (no drift)
-        # 1 = error
-        # 2 = changes detected (DRIFT!)
 
       - name: Report Drift
         if: steps.plan.outputs.plan_exit == '2'
