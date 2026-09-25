@@ -156,13 +156,16 @@ jobs:
               with:
                 api-key: ${{ secrets.INFRACOST_API_KEY }}
 
-            - name: Infracost Scan
+            - name: Infracost Estimate
               run: |
-                infracost scan --json . > infracost-results.json 2>&1 || true
-                echo "### 💰 Infracost Scan — \`${{ matrix.module }}\`" >> $GITHUB_STEP_SUMMARY
+                infracost breakdown \
+                  --path . \
+                  --format table \
+                  --no-color 2>&1 | tee infracost-output.txt || true
+                echo "### 💰 Infracost Cost Estimate — \`${{ matrix.module }}\`" >> $GITHUB_STEP_SUMMARY
                 echo "" >> $GITHUB_STEP_SUMMARY
                 echo '```' >> $GITHUB_STEP_SUMMARY
-                infracost scan . 2>&1 || true >> $GITHUB_STEP_SUMMARY
+                cat infracost-output.txt >> $GITHUB_STEP_SUMMARY
                 echo '```' >> $GITHUB_STEP_SUMMARY
               working-directory: ${{ matrix.module }}
 
