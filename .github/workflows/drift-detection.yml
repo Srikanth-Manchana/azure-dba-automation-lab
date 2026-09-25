@@ -1,0 +1,161 @@
+name: Drift Detection
+
+on:
+  schedule:
+    - cron: '0 6 * * *'    # Every day at 6 AM UTC
+  workflow_dispatch:         # Allow manual trigger from GitHub UI
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write              # Needed to create GitHub Issues on drift
+
+jobs:
+
+  # ── Job 1: Find ALL modules (not just changed ones) ───────────────────────
+  find-all-modules:
+    name: Find All Modules
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.find-modules.outputs.modules }}
+      has_modules: ${{ steps.find-modules.outputs.has_modules }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find all Terraform modules
+        id: find-modules
+        run: |
+          # Find all directories under track-** that have a backend.tf
+          # backend.tf presence means it is a real module with remote state
+          MODULES=$(find track-* -name "backend.tf" 2>/dev/null \
+            | xargs -I{} dirname {} \
+            | sort -u \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "All modules found: $MODULES"
+
+          if [ "$MODULES" == "[]" ] || [ -z "$MODULES" ]; then
+            echo "has_modules=false" >> $GITHUB_OUTPUT
+            echo "modules=[]" >> $GITHUB_OUTPUT
+          else
+            echo "has_modules=true" >> $GITHUB_OUTPUT
+            echo "modules=$MODULES" >> $GITHUB_OUTPUT
+          fi
+
+  # ── Job 2: Run plan on ALL modules and detect drift ───────────────────────
+  drift-check:
+    name: Drift Check (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    needs: find-all-modules
+    if: needs.find-all-modules.outputs.has_modules == 'true'
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.find-all-modules.outputs.modules) }}
+      fail-fast: false      # Check ALL modules even if one has drift
+    permissions:
+      id-token: write
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.9"
+
+      - name: Authenticate to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=rg-adal-tfstate" \
+            -backend-config="storage_account_name=${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=$(basename ${{ matrix.module }}).terraform.tfstate" \
+            -backend-config="use_oidc=true" \
+            -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -backend-config="client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+            -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+        working-directory: ${{ matrix.module }}
+
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: |
+          terraform plan -detailed-exitcode -no-color 2>&1 | tee plan-output.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          echo "plan_exit=$PLAN_EXIT" >> $GITHUB_OUTPUT
+          exit $PLAN_EXIT
+        working-directory: ${{ matrix.module }}
+        continue-on-error: true
+        # Exit codes:
+        # 0 = no changes (no drift)
+        # 1 = error
+        # 2 = changes detected (DRIFT!)
+
+      - name: Report Drift
+        if: steps.plan.outputs.plan_exit == '2'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const module = '${{ matrix.module }}';
+
+            let planOutput = '';
+            try {
+              planOutput = fs.readFileSync(`${module}/plan-output.txt`, 'utf8');
+            } catch (e) {
+              planOutput = 'Could not read plan output';
+            }
+
+            const title = `🚨 Drift Detected: ${module}`;
+            const body = [
+              `## Drift Detected in \`${module}\``,
+              '',
+              `**Detected at:** ${new Date().toISOString()}`,
+              `**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+              '',
+              '> Terraform detected differences between the state file and actual Azure resources.',
+              '> Review the plan output below and run `terraform apply` to reconcile.',
+              '',
+              '---',
+              '',
+              '<details>',
+              '<summary>📋 Full Plan Output (click to expand)</summary>',
+              '',
+              '```terraform',
+              planOutput.substring(0, 60000),
+              '```',
+              '',
+              '</details>',
+              '',
+              '## Resolution Steps',
+              '1. Review the plan output above to understand what drifted',
+              '2. If drift is expected (intentional change): update the Terraform code to match',
+              '3. If drift is unexpected (someone changed Azure manually): run `terraform apply` to restore',
+              '4. Close this issue once resolved'
+            ].join('\n');
+
+            // Create a GitHub Issue for the drift
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['drift', 'infrastructure']
+            });
+
+            // Also fail the job so the pipeline shows red
+            core.setFailed(`Drift detected in ${module} — GitHub Issue created`);
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: No Drift Confirmed
+        if: steps.plan.outputs.plan_exit == '0'
+        run: |
+          echo "✅ No drift detected in ${{ matrix.module }}"
+          echo "Azure resources match Terraform state exactly"
