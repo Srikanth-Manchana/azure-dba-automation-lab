@@ -87,17 +87,19 @@ jobs:
       - name: Terraform Plan (Drift Check)
         id: plan
         run: |
-          set +e
-          terraform plan -detailed-exitcode -no-color 2>&1 | tee plan-output.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          # Run plan and save output to file
+          # Use temporary file for exit code since pipe resets it
+          terraform plan -detailed-exitcode -no-color 2>&1 > plan-output.txt
+          PLAN_EXIT=$?
           echo "plan_exit=$PLAN_EXIT" >> $GITHUB_OUTPUT
           echo "Plan exit code: $PLAN_EXIT"
+          # Show plan output in logs as well
+          cat plan-output.txt
           # Exit codes:
           # 0 = no changes (no drift)
           # 1 = error
           # 2 = changes detected (DRIFT!)
-          # We always exit 0 here so the step succeeds
-          # The actual drift status is read from plan_exit output
+          # Always exit 0 so GitHub Actions writes the output variable
           exit 0
         working-directory: ${{ matrix.module }}
 
