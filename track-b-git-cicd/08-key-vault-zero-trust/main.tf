@@ -73,21 +73,6 @@ resource "azurerm_key_vault" "sql_secrets" {
   soft_delete_retention_days      = 7
   public_network_access_enabled   = true
 
-  # Access policy for Terraform — allows it to manage secrets
-  access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = data.azurerm_client_config.current.object_id
-
-    secret_permissions = [
-      "Get",
-      "List",
-      "Set",
-      "Delete",
-      "Purge",
-      "Recover"
-    ]
-  }
-
   tags = azurerm_resource_group.module08_rg.tags
 }
 
@@ -148,6 +133,24 @@ resource "azurerm_key_vault_access_policy" "pipeline_sp" {
   key_vault_id = azurerm_key_vault.sql_secrets.id
   tenant_id    = data.azurerm_client_config.current.tenant_id
   object_id    = "4c40aba3-b6c8-4f42-88b3-3f542e657c94"
+
+  secret_permissions = [
+    "Get",
+    "List",
+    "Set",
+    "Delete",
+    "Purge",
+    "Recover"
+  ]
+}
+
+# Access policy for local Terraform user (smanchana.work@gmail.com)
+# Object ID: 10d41341-a20b-423b-8cdc-6d1db29589f1
+# Required for local terraform plan/apply and for Module 11 to read secrets
+resource "azurerm_key_vault_access_policy" "local_user" {
+  key_vault_id = azurerm_key_vault.sql_secrets.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = "10d41341-a20b-423b-8cdc-6d1db29589f1"
 
   secret_permissions = [
     "Get",
